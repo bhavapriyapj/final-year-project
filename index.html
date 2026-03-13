@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+<title>Heart Murmur Detection</title>
+
+<link rel="stylesheet" href="/static/style.css">
+
+</head>
+
+<body>
+
+<h1>Hospital Heart Murmur Detection System</h1>
+
+<form method="POST" enctype="multipart/form-data">
+
+<input type="file" name="file" required>
+
+<button type="submit">Analyze</button>
+
+</form>
+
+
+{% if result %}
+
+<h2>Audio Playback</h2>
+
+<audio controls>
+<source src="/static/audio.wav" type="audio/wav">
+</audio>
+
+<h2>Waveform</h2>
+
+<img src="/static/waveform.png" width="600">
+
+<h2>Spectrogram</h2>
+<h2>Heart Beat Monitor</h2>
+
+<canvas id="ecgCanvas" width="700" height="200"></canvas>
+
+<script>
+
+const canvas = document.getElementById("ecgCanvas");
+const ctx = canvas.getContext("2d");
+
+let x = 0;
+
+function drawECG(){
+
+ctx.clearRect(0,0,canvas.width,canvas.height);
+
+ctx.beginPath();
+
+for(let i=0;i<canvas.width;i++){
+
+let y = 100 + 40*Math.sin((i+x)/10);
+
+if(i%60==0){
+y -= 80;
+}
+
+ctx.lineTo(i,y);
+}
+
+ctx.strokeStyle="lime";
+ctx.lineWidth=2;
+ctx.stroke();
+
+x+=5;
+
+requestAnimationFrame(drawECG);
+
+}
+
+drawECG();
+
+</script>
+<img src="/static/spectrogram.png" width="600">
+
+
+<div class="result">
+
+<h2>Diagnosis Result</h2>
+
+<p>Murmur Type: <b>{{result}}</b></p>
+
+<p>Confidence: <b>{{confidence}} %</b></p>
+<a href="/static/report.pdf" download>
+<button>Download Medical Report</button>
+</a>
+
+</div>
+
+{% endif %}
+
+</body>
+
+</html>
