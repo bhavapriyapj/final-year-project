@@ -1,33 +1,42 @@
+
 import torch
 import torch.nn as nn
-import librosa
 import numpy as np
-import os
+from torch.utils.data import Dataset, DataLoader
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 
-# --------------------------------
-# CONFIG
-# --------------------------------
+# ------------------------------
+# LOAD DATA
+# ------------------------------
 
-SAMPLE_RATE = 4000
-MAX_LEN = 400
+features = np.load("features.npy")
+labels = np.load("labels.npy")
 
-label_map = {
-0: "Systolic Murmur",
-1: "Diastolic Murmur",
-2: "Continuous Murmur",
-3: "No Murmur"
-}
+print("Dataset shape:", features.shape)
 
-disease_hint = {
-"Systolic Murmur": "Possible conditions: Mitral Regurgitation / Aortic Stenosis",
-"Diastolic Murmur": "Possible conditions: Aortic Regurgitation",
-"Continuous Murmur": "Possible conditions: Patent Ductus Arteriosus (PDA)",
-"No Murmur": "Heart sound appears normal"
-}
+# ------------------------------
+# DATASET
+# ------------------------------
 
-# --------------------------------
+class HeartDataset(Dataset):
+
+    def __len__(self):
+        return len(features)
+
+    def __getitem__(self, idx):
+
+        x = torch.tensor(features[idx], dtype=torch.float32)
+        y = torch.tensor(labels[idx], dtype=torch.long)
+
+        return x, y
+
+
+dataset = HeartDataset()
+loader = DataLoader(dataset, batch_size=128)
+
+# ------------------------------
 # MODEL
-# --------------------------------
+# ------------------------------
 
 class HeartTransformer(nn.Module):
 
@@ -57,116 +66,47 @@ class HeartTransformer(nn.Module):
         x = self.embed(x)
         x = self.transformer(x)
         x = x.mean(dim=1)
-        out = self.classifier(x)
 
-        return out
+        return self.classifier(x)
 
 
-# --------------------------------
-# LOAD MODEL
-# --------------------------------
-
-print("Loading trained model...")
+# ------------------------------
+# LOAD TRAINED MODEL
+# ------------------------------
 
 model = HeartTransformer()
-
-model.load_state_dict(torch.load("heart_transformer_model.pth", map_location="cpu"))
-
+model.load_state_dict(torch.load("heart_transformer_model.pth"))
 model.eval()
 
-print("Model loaded successfully\n")
+print("Model loaded")
 
+# ------------------------------
+# EVALUATION
+# ------------------------------
 
-# --------------------------------
-# FEATURE EXTRACTION
-# --------------------------------
-
-def extract_features(audio_path):
-
-    signal,_ = librosa.load(audio_path,sr=SAMPLE_RATE)
-
-    mel = librosa.feature.melspectrogram(
-        y=signal,
-        sr=SAMPLE_RATE,
-        n_mels=64,
-        n_fft=1024,
-        hop_length=256
-    )
-
-    mel = librosa.power_to_db(mel)
-
-    mel = mel.T
-
-    if mel.shape[0] < MAX_LEN:
-
-        pad = MAX_LEN - mel.shape[0]
-
-        mel = np.pad(mel,((0,pad),(0,0)))
-
-    else:
-
-        mel = mel[:MAX_LEN,:]
-
-    mel = torch.tensor(mel,dtype=torch.float32).unsqueeze(0)
-
-    return mel
-
-
-# --------------------------------
-# USER INPUT
-# --------------------------------
-
-audio = input("Enter heart sound file path: ")
-
-if not os.path.exists(audio):
-
-    print(" File not found")
-    exit()
-
-
-# --------------------------------
-# FEATURE EXTRACTION
-# --------------------------------
-
-print("\nProcessing audio...")
-
-features = extract_features(audio)
-
-print("Feature extraction completed")
-
-
-# --------------------------------
-# PREDICTION
-# --------------------------------
+all_preds = []
+all_labels = []
 
 with torch.no_grad():
 
-    output = model(features)
+    for x,y in loader:
 
-    prediction = torch.argmax(output,dim=1).item()
+        outputs = model(x)
 
-    probs = torch.softmax(output,dim=1)
+        preds = torch.argmax(outputs, dim=1)
 
-    confidence = probs[0][prediction].item()
+        all_preds.extend(preds.numpy())
+        all_labels.extend(y.numpy())
 
+# ------------------------------
+# METRICS
+# ------------------------------
 
-result = label_map[prediction]
+print("\nAccuracy:", accuracy_score(all_labels, all_preds))
 
+print("\nClassification Report:")
+print(classification_report(all_labels, all_preds))
 
-# --------------------------------
-# OUTPUT
-# --------------------------------
+print("\nConfusion Matrix:")
+print(confusion_matrix(all_labels, all_preds))
 
-print("\n==============================")
-print(" HEART SOUND ANALYSIS")
-print("==============================")
-
-print("Detected Murmur Type:",result)
-
-print("Confidence:",round(confidence*100,2),"%")
-
-print("\nClinical Hint:")
-
-print(disease_hint[result])
-
-print("==============================")
